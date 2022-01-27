@@ -157,9 +157,9 @@ export const TxParametersDetail = ({
 }
 
 const TxParameterEndWrapper = styled.span`
-  display: 'flex';
-  justify-content: 'flex-end';
-  gap: '4px'; // EthHashInfo uses a gap between the address and copy button
+  display: flex;
+  justify-content: flex-end;
+  gap: 4px; // EthHashInfo uses a gap between the address and copy button
 `
 
 const TxAdvancedParametersDetail = ({ tx }: { tx: Transaction }) => {
