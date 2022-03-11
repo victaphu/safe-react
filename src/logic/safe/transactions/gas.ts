@@ -1,15 +1,15 @@
-import { List } from 'immutable'
 import { FEATURES } from '@gnosis.pm/safe-react-gateway-sdk'
-
+import { List } from 'immutable'
 import { getGnosisSafeInstanceAt } from 'src/logic/contracts/safeContracts'
-import { calculateGasOf } from 'src/logic/wallets/ethTransactions'
-import { generateSignaturesFromTxConfirmations } from 'src/logic/safe/safeTxSigner'
 import { fetchSafeTxGasEstimation } from 'src/logic/safe/api/fetchSafeTxGasEstimation'
+import { generateSignaturesFromTxConfirmations } from 'src/logic/safe/safeTxSigner'
 import { Confirmation } from 'src/logic/safe/store/models/types/confirmation'
+import { calculateGasOf } from 'src/logic/wallets/ethTransactions'
+import { TxParameters } from 'src/routes/safe/container/hooks/useTransactionParameters'
+import { PayableTx } from 'src/types/contracts/types'
 import { checksumAddress } from 'src/utils/checksumAddress'
 import { hasFeature } from '../utils/safeVersion'
-import { PayableTx } from 'src/types/contracts/types'
-import { TxParameters } from 'src/routes/safe/container/hooks/useTransactionParameters'
+
 
 export type SafeTxGasEstimationProps = {
   safeAddress: string

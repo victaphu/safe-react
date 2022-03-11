@@ -1,10 +1,10 @@
+import { SafeTransactionData } from '@gnosis.pm/safe-core-sdk-types'
 import { TypedDataUtils } from 'eth-sig-util'
 
-import { TxArgs } from 'src/logic/safe/store/models/types/transaction'
 import { getEip712MessageTypes, generateTypedDataFrom } from 'src/logic/safe/transactions/offchainSigner/EIP712Signer'
 
-export const generateSafeTxHash = (safeAddress: string, safeVersion: string, txArgs: TxArgs): string => {
-  const typedData = generateTypedDataFrom({ safeAddress, safeVersion, ...txArgs })
+export const generateSafeTxHash = (safeAddress: string, safeVersion: string, safeTransactionData: SafeTransactionData): string => {
+  const typedData = generateTypedDataFrom({ safeAddress, safeVersion, safeTransactionData })
 
   const messageTypes = getEip712MessageTypes(safeVersion)
 

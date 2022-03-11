@@ -3,10 +3,10 @@ import semverSatisfies from 'semver/functions/satisfies'
 
 import { getWeb3 } from 'src/logic/wallets/getWeb3'
 import { EMPTY_DATA } from 'src/logic/wallets/ethTransactions'
-import { TxArgs } from 'src/logic/safe/store/models/types/transaction'
 import { adjustV } from './utils'
-import { Operation } from '@gnosis.pm/safe-react-gateway-sdk'
 import { _getChainId } from 'src/config'
+import { OperationType, SafeTransactionData } from '@gnosis.pm/safe-core-sdk-types'
+import { EthSignerArgs } from './ethSigner'
 
 const EIP712_NOT_SUPPORTED_ERROR_MSG = "EIP712 is not supported by user's wallet"
 
@@ -66,9 +66,10 @@ export const getEip712MessageTypes = (
   }
 }
 
-export interface SigningTxArgs extends TxArgs {
+export interface SigningTxArgs {
   safeAddress: string
   safeVersion: string
+  safeTransactionData: SafeTransactionData
 }
 
 type GenerateTypedData = {
@@ -82,7 +83,7 @@ type GenerateTypedData = {
     to: string
     value: string
     data: string
-    operation: Operation
+    operation: OperationType
     safeTxGas: string
     baseGas: string
     gasPrice: string
@@ -95,19 +96,22 @@ type GenerateTypedData = {
 export const generateTypedDataFrom = ({
   safeAddress,
   safeVersion,
-  baseGas,
-  data,
-  gasPrice,
-  gasToken,
-  nonce,
-  operation,
-  refundReceiver,
-  safeTxGas,
-  to,
-  valueInWei,
+  safeTransactionData
 }: SigningTxArgs): GenerateTypedData => {
   const networkId = Number(_getChainId())
   const eip712WithChainId = semverSatisfies(safeVersion, '>=1.3.0')
+  const  {
+    baseGas,
+    data,
+    gasPrice,
+    gasToken,
+    nonce,
+    operation,
+    refundReceiver,
+    safeTxGas,
+    to,
+    value,
+  } = safeTransactionData
 
   const typedData = {
     types: getEip712MessageTypes(safeVersion),
@@ -118,24 +122,29 @@ export const generateTypedDataFrom = ({
     primaryType: 'SafeTx',
     message: {
       to,
-      value: valueInWei,
+      value,
       data,
       operation,
-      safeTxGas,
-      baseGas,
-      gasPrice,
+      safeTxGas: safeTxGas.toString(),
+      baseGas: baseGas.toString(),
+      gasPrice: gasPrice.toString(),
       gasToken,
       refundReceiver,
       nonce: Number(nonce),
     },
   }
-
   return typedData
 }
 
+/*
+sender
+safeaddress
+safeTransactionData
+*/
+
 export const getEIP712Signer =
   (version?: string) =>
-  async (txArgs: SigningTxArgs): Promise<string> => {
+  async (txArgs: SigningTxArgs & EthSignerArgs): Promise<string> => {
     const web3 = getWeb3()
     const typedData = generateTypedDataFrom(txArgs)
 

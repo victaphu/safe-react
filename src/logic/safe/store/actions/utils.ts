@@ -1,7 +1,6 @@
 import { generatePath } from 'react-router-dom'
 import { SafeInfo, TransactionDetails } from '@gnosis.pm/safe-react-gateway-sdk'
 
-import { GnosisSafe } from 'src/types/contracts/gnosis_safe.d'
 import { LATEST_SAFE_VERSION } from 'src/utils/constants'
 import { SafeRecordProps } from 'src/logic/safe/store/models/safe'
 import { getSpendingLimits } from 'src/logic/safe/utils/spendingLimits'
@@ -16,7 +15,6 @@ import {
   LocalTransactionStatus,
   isMultiSigExecutionDetails,
 } from 'src/logic/safe/store/models/types/gateway.d'
-import { getGnosisSafeInstanceAt } from 'src/logic/contracts/safeContracts'
 import { logError, Errors } from 'src/logic/exceptions/CodedException'
 import { getRecommendedNonce } from '../../api/fetchSafeTxGasEstimation'
 import {
@@ -27,15 +25,15 @@ import {
   SAFE_ROUTES,
   TRANSACTION_ID_SLUG,
 } from 'src/routes/routes'
+import Safe from '@gnosis.pm/safe-core-sdk'
 
 export const canExecuteCreatedTx = async (
-  safeInstance: GnosisSafe,
+  safeSdk: Safe,
   nonce: string,
   lastTx: Transaction | null,
 ): Promise<boolean> => {
-  const safeNonce = (await safeInstance.methods.nonce().call()).toString()
-  const thresholdAsString = await safeInstance.methods.getThreshold().call()
-  const threshold = Number(thresholdAsString)
+  const safeNonce = (await safeSdk.getNonce()).toString()
+  const threshold = (await safeSdk.getThreshold())
 
   // Needs to collect owners signatures
   if (threshold > 1) {
@@ -120,14 +118,13 @@ export const buildSafeOwners = (
   return localSafeOwners
 }
 
-export const getNonce = async (safeAddress: string, safeVersion: string): Promise<string> => {
+export const getNonce = async (safeSdk: Safe, safeAddress: string): Promise<string> => {
   let nextNonce: string
   try {
     nextNonce = (await getRecommendedNonce(safeAddress)).toString()
   } catch (e) {
     logError(Errors._616, e.message)
-    const safeInstance = getGnosisSafeInstanceAt(safeAddress, safeVersion)
-    nextNonce = await safeInstance.methods.nonce().call()
+    nextNonce = (await safeSdk.getNonce()).toString()
   }
   return nextNonce
 }

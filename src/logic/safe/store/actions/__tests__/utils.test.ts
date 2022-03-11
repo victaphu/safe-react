@@ -19,10 +19,10 @@ describe('canExecuteCreatedTx', () => {
     // given
     const nonce = '0'
     const threshold = '2'
-    const safeInstance = getMockedSafeInstance({ threshold })
+    const safeSdk = getMockedSafeInstance({ threshold })
 
     // when
-    const result = await canExecuteCreatedTx(safeInstance, nonce, lastTxFromStore)
+    const result = await canExecuteCreatedTx(safeSdk, nonce, lastTxFromStore)
 
     // then
     expect(result).toBe(false)
@@ -31,11 +31,11 @@ describe('canExecuteCreatedTx', () => {
     // given
     const nonce = '1'
     const threshold = '1'
-    const safeInstance = getMockedSafeInstance({ threshold, nonce })
+    const safeSdk = getMockedSafeInstance({ threshold, nonce })
     const lastTxFromStoreExecuted = { ...lastTxFromStore, txStatus: LocalTransactionStatus.SUCCESS }
 
     // when
-    const result = await canExecuteCreatedTx(safeInstance, nonce, lastTxFromStoreExecuted)
+    const result = await canExecuteCreatedTx(safeSdk, nonce, lastTxFromStoreExecuted)
 
     // then
     expect(result).toBe(true)
@@ -44,11 +44,11 @@ describe('canExecuteCreatedTx', () => {
     // given
     const nonce = '10'
     const threshold = '1'
-    const safeInstance = getMockedSafeInstance({ threshold, nonce })
+    const safeSdk = getMockedSafeInstance({ threshold, nonce })
     const lastTxFromStoreExecuted = { ...lastTxFromStore, txStatus: LocalTransactionStatus.SUCCESS }
 
     // when
-    const result = await canExecuteCreatedTx(safeInstance, nonce, lastTxFromStoreExecuted)
+    const result = await canExecuteCreatedTx(safeSdk, nonce, lastTxFromStoreExecuted)
 
     // then
     expect(result).toBe(true)
@@ -57,11 +57,11 @@ describe('canExecuteCreatedTx', () => {
     // given
     const nonce = '10'
     const threshold = '1'
-    const safeInstance = getMockedSafeInstance({ threshold })
+    const safeSdk = getMockedSafeInstance({ threshold })
     const lastTxFromStoreExecuted = { ...lastTxFromStore, txStatus: LocalTransactionStatus.FAILED }
 
     // when
-    const result = await canExecuteCreatedTx(safeInstance, nonce, lastTxFromStoreExecuted)
+    const result = await canExecuteCreatedTx(safeSdk, nonce, lastTxFromStoreExecuted)
 
     // then
     expect(result).toBe(false)

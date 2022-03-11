@@ -1,38 +1,40 @@
+import Safe, { EthSignSignature } from '@gnosis.pm/safe-core-sdk'
+import { SafeSignature, SafeTransaction, SafeTransactionData, TransactionOptions } from '@gnosis.pm/safe-core-sdk-types'
 import { Operation, TransactionDetails } from '@gnosis.pm/safe-react-gateway-sdk'
+import { Web3TransactionResult } from '@gnosis.pm/safe-web3-lib'
 import { AnyAction } from 'redux'
 import { ThunkAction } from 'redux-thunk'
-
-import onboard, { checkWallet } from 'src/logic/wallets/onboard'
-import { getWeb3 } from 'src/logic/wallets/getWeb3'
+import { _getChainId } from 'src/config'
+import { getContractErrorMessage } from 'src/logic/contracts/safeContractErrors'
 import { getGnosisSafeInstanceAt } from 'src/logic/contracts/safeContracts'
+import { Errors, logError } from 'src/logic/exceptions/CodedException'
 import { createTxNotifications } from 'src/logic/notifications'
+import { checkIfOffChainSignatureIsPossible, getPreValidatedSignatures } from 'src/logic/safe/safeTxSigner'
+import { addPendingTransaction, removePendingTransaction } from 'src/logic/safe/store/actions/pendingTransactions'
+import { generateSafeTxHash } from 'src/logic/safe/store/actions/transactions/utils/transactionHelpers'
+import { canExecuteCreatedTx, getNonce, navigateToTx } from 'src/logic/safe/store/actions/utils'
+import { currentSafeCurrentVersion } from 'src/logic/safe/store/selectors'
+import { getLastTransaction } from 'src/logic/safe/store/selectors/gatewayTransactions'
 import {
   getApprovalTransaction,
   getExecutionTransaction,
   saveTxToHistory,
-  tryOffChainSigning,
+  tryOffChainSigning
 } from 'src/logic/safe/transactions'
-import { estimateSafeTxGas, SafeTxGasEstimationProps, createSendParams } from 'src/logic/safe/transactions/gas'
-import { currentSafeCurrentVersion } from 'src/logic/safe/store/selectors'
+import { createSendParams, estimateSafeTxGas, SafeTxGasEstimationProps } from 'src/logic/safe/transactions/gas'
+import * as aboutToExecuteTx from 'src/logic/safe/utils/aboutToExecuteTx'
+import { isWalletRejection } from 'src/logic/wallets/errors'
 import { ZERO_ADDRESS } from 'src/logic/wallets/ethAddresses'
 import { EMPTY_DATA } from 'src/logic/wallets/ethTransactions'
+import { getSafeSDK, getWeb3 } from 'src/logic/wallets/getWeb3'
+import onboard, { checkWallet } from 'src/logic/wallets/onboard'
 import { providerSelector } from 'src/logic/wallets/store/selectors'
-import { generateSafeTxHash } from 'src/logic/safe/store/actions/transactions/utils/transactionHelpers'
-import { getNonce, canExecuteCreatedTx, navigateToTx } from 'src/logic/safe/store/actions/utils'
-import fetchTransactions from './transactions/fetchTransactions'
-import { AppReduxState } from 'src/store'
-import { Dispatch, DispatchReturn } from './types'
-import { checkIfOffChainSignatureIsPossible, getPreValidatedSignatures } from 'src/logic/safe/safeTxSigner'
 import { TxParameters } from 'src/routes/safe/container/hooks/useTransactionParameters'
-import { Errors, logError } from 'src/logic/exceptions/CodedException'
-import { removePendingTransaction, addPendingTransaction } from 'src/logic/safe/store/actions/pendingTransactions'
-import { _getChainId } from 'src/config'
+import { AppReduxState } from 'src/store'
 import { GnosisSafe } from 'src/types/contracts/gnosis_safe.d'
-import * as aboutToExecuteTx from 'src/logic/safe/utils/aboutToExecuteTx'
-import { getLastTransaction } from 'src/logic/safe/store/selectors/gatewayTransactions'
-import { TxArgs } from 'src/logic/safe/store/models/types/transaction'
-import { getContractErrorMessage } from 'src/logic/contracts/safeContractErrors'
-import { isWalletRejection } from 'src/logic/wallets/errors'
+import fetchTransactions from './transactions/fetchTransactions'
+import { Dispatch, DispatchReturn } from './types'
+
 
 export interface CreateTransactionArgs {
   navigateToTransactionsTab?: boolean
@@ -78,7 +80,8 @@ export class TxSender {
   notifications: ReturnType<typeof createTxNotifications>
   nonce: string
   isFinalization: boolean
-  txArgs: TxArgs
+  safeSdk: Safe
+  safeTransaction: SafeTransaction
   safeTxHash: string
   txProps: RequiredTxProps
   from: string
@@ -92,7 +95,7 @@ export class TxSender {
 
   // On transaction completion (either confirming or executing)
   async onComplete(signature?: string, confirmCallback?: ConfirmEventHandler): Promise<void> {
-    const { txArgs, safeTxHash, txProps, dispatch, notifications, isFinalization } = this
+    const { safeSdk, safeTransaction, from, safeTxHash, txProps, dispatch, notifications, isFinalization } = this
 
     // Propose the tx to the backend
     // 1) If signing
@@ -100,7 +103,14 @@ export class TxSender {
     let txDetails: TransactionDetails | null = null
     if (!isFinalization || !this.txId) {
       try {
-        txDetails = await saveTxToHistory({ ...txArgs, signature, origin: txProps.origin })
+
+        txDetails = await saveTxToHistory({
+          safeSdk,
+          safeTransaction,
+          sender: from,
+          signature,
+          origin: txProps.origin
+        })
       } catch (err) {
         logError(Errors._816, err.message)
         return
@@ -126,7 +136,7 @@ export class TxSender {
   }
 
   async onError(err: Error & { code: number }, errorCallback?: ErrorEventHandler): Promise<void> {
-    const { txArgs, isFinalization, from, txProps, dispatch, notifications, safeInstance, txId, txHash } = this
+    const { safeTransaction, isFinalization, from, txProps, dispatch, notifications, safeInstance, txId, txHash } = this
 
     errorCallback?.()
 
@@ -156,7 +166,7 @@ export class TxSender {
             0,
             ZERO_ADDRESS,
             ZERO_ADDRESS,
-            txArgs.sigs,
+            safeTransaction.encodedSignatures()
           )
           .encodeABI()
       : txHash && safeInstance.methods.approveHash(txHash).encodeABI()
@@ -178,29 +188,44 @@ export class TxSender {
   }
 
   async onlyConfirm(hardwareWallet: boolean): Promise<string | undefined> {
-    const { txArgs, safeTxHash, txProps, safeVersion } = this
+    const { safeTransaction, safeTxHash, txProps, safeVersion, from } = this
 
     return await tryOffChainSigning(
       safeTxHash,
-      { ...txArgs, sender: String(txArgs.sender), safeAddress: txProps.safeAddress },
+      {
+        safeTransactionData: safeTransaction.data,
+        sender: from,
+        safeAddress: txProps.safeAddress
+      },
       hardwareWallet,
       safeVersion,
     )
   }
 
   async sendTx(confirmCallback?: ConfirmEventHandler): Promise<string> {
-    const { txArgs, isFinalization, from, safeTxHash, txProps } = this
+    const { safeSdk, safeTransaction, isFinalization, from, safeTxHash, txProps, nonce } = this
 
-    const tx = isFinalization ? getExecutionTransaction(txArgs) : getApprovalTransaction(this.safeInstance, safeTxHash)
     const sendParams = createSendParams(from, txProps.ethParameters || {})
 
-    return await tx
-      .send(sendParams)
-      .once('transactionHash', (hash) => {
+    const options: TransactionOptions = {
+      from,
+      gasLimit: Number(sendParams.gas),
+      gasPrice: Number(sendParams.gasPrice)
+      //value: 0,
+      //txParams.ethNonce,
+      //maxPriorityFeePerGas
+      //maxFeePerGas
+    }
+
+    const tx = isFinalization
+      ? await getExecutionTransaction(safeSdk, safeTransaction, options)
+      : await getApprovalTransaction(safeSdk, safeTxHash, options)
+
+      return await (tx as Web3TransactionResult).promiEvent.once('transactionHash', (hash) => {
         this.txHash = hash
 
         if (isFinalization) {
-          aboutToExecuteTx.setNonce(txArgs.nonce)
+          aboutToExecuteTx.setNonce(Number(nonce))
         }
         this.onComplete(undefined, confirmCallback)
       })
@@ -273,10 +298,12 @@ export class TxSender {
     // Notifications
     this.notifications = createTxNotifications(txProps.notifiedTransaction, txProps.origin, dispatch)
 
-    // Use the user-provided none or the recommented nonce
-    this.nonce = txProps.txNonce?.toString() || (await getNonce(txProps.safeAddress, this.safeVersion))
-
     this.txProps = txProps
+    this.safeSdk = await getSafeSDK(this.from, txProps.safeAddress, this.safeVersion)
+
+    // Use the user-provided nonce or the recommended nonce
+    this.nonce = txProps.txNonce?.toString() || (await getNonce(this.safeSdk, txProps.safeAddress))
+
     this.dispatch = dispatch
   }
 }
@@ -311,30 +338,31 @@ export const createTransaction = (
 
     // Execute right away?
     sender.isFinalization =
-      !props.delayExecution && (await canExecuteCreatedTx(sender.safeInstance, sender.nonce, getLastTransaction(state)))
-
-    // Prepare a TxArgs object
-    sender.txArgs = {
-      safeInstance: sender.safeInstance,
+      !props.delayExecution && (await canExecuteCreatedTx(sender.safeSdk, sender.nonce, getLastTransaction(state)))
+    
+    const safeTxGas = txProps.safeTxGas ?? (await getSafeTxGas(txProps, sender.safeVersion))
+    const safeTransactionData: SafeTransactionData = {
       to: txProps.to,
-      valueInWei: txProps.valueInWei,
+      value: txProps.valueInWei,
       data: txProps.txData,
       operation: txProps.operation,
-      nonce: Number.parseInt(sender.nonce),
-      safeTxGas: txProps.safeTxGas ?? (await getSafeTxGas(txProps, sender.safeVersion)),
-      baseGas: '0',
-      gasPrice: '0',
+      safeTxGas: Number(safeTxGas),
+      baseGas: 0,
+      gasPrice: 0,
       gasToken: ZERO_ADDRESS,
       refundReceiver: ZERO_ADDRESS,
-      sender: sender.from,
-      // We're making a new tx, so there are no other signatures
-      // Just pass our own address for an unsigned execution
-      // Contract will compare the sender address to this
-      sigs: getPreValidatedSignatures(sender.from),
+      nonce: Number(sender.nonce)
     }
+    
+    sender.safeTransaction = await sender.safeSdk.createTransaction(safeTransactionData)
+    // We're making a new tx, so there are no other signatures
+    // Just pass our own address for an unsigned execution
+    // Contract will compare the sender address to this
+    const signature: SafeSignature = new EthSignSignature(sender.from, getPreValidatedSignatures(sender.from))
+    sender.safeTransaction.addSignature(signature)
 
     // SafeTxHash acts as the unique ID of a tx throughout the app
-    sender.safeTxHash = generateSafeTxHash(txProps.safeAddress, sender.safeVersion, sender.txArgs)
+    sender.safeTxHash = generateSafeTxHash(txProps.safeAddress, sender.safeVersion, sender.safeTransaction.data)
 
     // Start the creation
     sender.submitTx(state, confirmCallback, errorCallback)

@@ -1,3 +1,4 @@
+import { SafeTransactionData } from '@gnosis.pm/safe-core-sdk-types';
 import { List } from 'immutable'
 import { AnyAction } from 'redux'
 import { ThunkAction } from 'redux-thunk'
@@ -20,17 +21,7 @@ interface ProcessTransactionArgs {
     id: string
     confirmations: List<Confirmation>
     origin: string // json.stringified url, name
-    to: string
-    value: string
-    data: string
-    operation: Operation
-    nonce: number
-    safeTxGas: string
-    safeTxHash: string
-    baseGas: string
-    gasPrice: string
-    gasToken: string
-    refundReceiver: string
+    safeTransactionData: SafeTransactionData
   }
   ethParameters?: Pick<TxParameters, 'ethNonce' | 'ethGasLimit' | 'ethGasPriceInGWei' | 'ethMaxPrioFeeInGWei'>
   preApprovingOwner?: string
@@ -51,17 +42,18 @@ export const processTransaction = (props: ProcessTransactionArgs): ProcessTransa
     // Set specific transaction being finalised
     sender.txId = tx.id
 
+    const { operation, to, data, nonce, value, safeTxGas} = tx.safeTransactionData
     const txProps = {
       navigateToTransactionsTab: false,
       notifiedTransaction: props.notifiedTransaction,
-      operation: tx.operation,
       origin: tx.origin,
       safeAddress: props.safeAddress,
-      to: tx.to,
-      txData: tx.data ?? EMPTY_DATA,
-      txNonce: tx.nonce,
-      valueInWei: tx.value,
-      safeTxGas: tx.safeTxGas,
+      operation: operation,
+      to: to,
+      txData: data ?? EMPTY_DATA,
+      txNonce: nonce,
+      valueInWei: value,
+      safeTxGas: safeTxGas,
       ethParameters: props.ethParameters,
     }
 
@@ -77,10 +69,9 @@ export const processTransaction = (props: ProcessTransactionArgs): ProcessTransa
 
     sender.txArgs = {
       ...tx, // Merge previous tx with new data
-      safeInstance: sender.safeInstance,
-      valueInWei: tx.value,
       data: txProps.txData,
-      gasPrice: tx.gasPrice || '0',
+      valueInWei: tx.safeTransactionData.value,
+      gasPrice: tx.safeTransactionData.gasPrice || 0,
       sender: sender.from,
       sigs: generateSignaturesFromTxConfirmations(
         tx.confirmations,
