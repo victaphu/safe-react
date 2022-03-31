@@ -8,8 +8,11 @@ import Header from './Header'
 import Footer from './Footer'
 import Sidebar from './Sidebar'
 import { MobileNotSupported } from './MobileNotSupported'
-import { SAFE_ROUTES, WELCOME_ROUTE } from 'src/routes/routes'
+import { HOME_ROUTE, SAFE_ROUTES, WELCOME_ROUTE } from 'src/routes/routes'
 import useDarkMode from 'src/logic/hooks/useDarkMode'
+import AddSafeButton from 'src/components/SafeListSidebar/AddSafeButton'
+import Hairline from 'src/components/layout/Hairline'
+import { SafeList } from 'src/components/SafeListSidebar/SafeList'
 
 const Container = styled.div`
   height: 100vh;
@@ -47,6 +50,19 @@ const SidebarWrapper = styled.aside`
   padding: 8px 8px 0 8px;
   background-color: ${({ theme }) => theme.colors.white};
   box-shadow: 0 2px 4px 0 rgba(40, 54, 61, 0.18);
+`
+
+const DashboardSidebarWrapper = styled.aside`
+  height: 100%;
+  width: 335px;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  z-index: 1;
+
+  padding: 8px 8px 0 8px;
+  background-color: ${({ theme }) => theme.colors.white};
+  border: 2px solid #eeeff0;
 `
 
 const ContentWrapper = styled.div`
@@ -102,24 +118,36 @@ const Layout: React.FC<Props> = ({
     path: [SAFE_ROUTES.SETTINGS, WELCOME_ROUTE],
   })
 
+  const isDashboardView = !!matchPath(pathname, {
+    path: HOME_ROUTE,
+  })
+
   return (
     <Container>
       <HeaderWrapper>
         <Header />
       </HeaderWrapper>
       <BodyWrapper>
-        <SidebarWrapper data-testid="sidebar">
-          <Sidebar
-            items={sidebarItems}
-            safeAddress={safeAddress}
-            safeName={safeName}
-            balance={balance}
-            granted={granted}
-            onToggleSafeList={onToggleSafeList}
-            onReceiveClick={onReceiveClick}
-            onNewTransactionClick={onNewTransactionClick}
-          />
-        </SidebarWrapper>
+        {isDashboardView ? (
+          <DashboardSidebarWrapper>
+            <AddSafeButton onAdd={() => {}} />
+            <Hairline />
+            <SafeList onSafeClick={() => {}} />
+          </DashboardSidebarWrapper>
+        ) : (
+          <SidebarWrapper data-testid="sidebar">
+            <Sidebar
+              items={sidebarItems}
+              safeAddress={safeAddress}
+              safeName={safeName}
+              balance={balance}
+              granted={granted}
+              onToggleSafeList={onToggleSafeList}
+              onReceiveClick={onReceiveClick}
+              onNewTransactionClick={onNewTransactionClick}
+            />
+          </SidebarWrapper>
+        )}
         <ContentWrapper>
           <div>{children}</div>
           {hasFooter && <Footer />}
