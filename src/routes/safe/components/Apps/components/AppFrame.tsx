@@ -36,6 +36,8 @@ import { ThirdPartyCookiesWarning } from './ThirdPartyCookiesWarning'
 import { grantedSelector } from 'src/routes/safe/container/selector'
 import { SAFE_APPS_EVENTS } from 'src/utils/events/safeApps'
 import { trackEvent } from 'src/utils/googleTagManager'
+import { loadFromStorage, saveToStorage } from 'src/utils/storage'
+import { useRemoteSafeApps } from 'src/routes/safe/components/Apps/hooks/appList/useRemoteSafeApps'
 
 const AppWrapper = styled.div`
   display: flex;
@@ -82,8 +84,18 @@ const INITIAL_CONFIRM_TX_MODAL_STATE: ConfirmTransactionModalState = {
   params: undefined,
 }
 
+type AppTrackData = {
+  string: {
+    timestamp: Date
+    openCount: number
+    txCount: number
+  }
+}
+
 const URL_NOT_PROVIDED_ERROR = 'App url No provided or it is invalid.'
 const APP_LOAD_ERROR = 'There was an error loading the Safe App. There might be a problem with the App provider.'
+
+const APPS_DASHBOARD = 'APPS_DASHBOARD'
 
 const AppFrame = ({ appUrl }: Props): ReactElement => {
   const { address: safeAddress, ethBalance, owners, threshold } = useSelector(currentSafe)
@@ -101,6 +113,8 @@ const AppFrame = ({ appUrl }: Props): ReactElement => {
   const errorTimer = useRef<number>()
   const [, setAppLoadError] = useState<boolean>(false)
   const { thirdPartyCookiesDisabled, setThirdPartyCookiesDisabled } = useThirdPartyCookies()
+  const { remoteSafeApps } = useRemoteSafeApps()
+  const currentApp = remoteSafeApps.filter((app) => app.url === appUrl)[0]
 
   const safeAppsRpc = getSafeAppsRpcServiceUrl()
   const safeAppWeb3Provider = useMemo(
@@ -114,7 +128,9 @@ const AppFrame = ({ appUrl }: Props): ReactElement => {
       clearTimeout(errorTimer.current)
     }
 
-    if (appIsLoading) {
+    if (appIsLoading && currentApp) {
+      const trackData = loadFromStorage<AppTrackData>(APPS_DASHBOARD) || {}
+      saveToStorage(APPS_DASHBOARD, { ...trackData, [currentApp.id]: { timestamp: Date.now() } })
       timer.current = window.setTimeout(() => {
         setIsLoadingSlow(true)
       }, SAFE_POLLING_INTERVAL)
@@ -131,7 +147,7 @@ const AppFrame = ({ appUrl }: Props): ReactElement => {
     return () => {
       clearTimeouts()
     }
-  }, [appIsLoading])
+  }, [appIsLoading, currentApp])
 
   const openConfirmationModal = useCallback(
     (txs: Transaction[], params: TransactionParams | undefined, requestId: RequestId) =>
