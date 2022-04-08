@@ -127,6 +127,7 @@ const AppFrame = ({ appUrl }: Props): ReactElement => {
           ...trackData[currentApp.id],
           timestamp: Date.now(),
           openCount: currentOpenCount ? ++currentOpenCount : 1,
+          txCount: trackData[currentApp.id]?.txCount || 0,
         },
       })
       timer.current = window.setTimeout(() => {
